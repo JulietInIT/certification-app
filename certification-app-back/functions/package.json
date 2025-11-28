@@ -13,6 +13,9 @@
   },
   "main": "index.js",
   "type": "module",
+  "imports": {
+    "#notes": "./notes/index.js"
+  },
   "dependencies": {
     "firebase-admin": "^13.6.0",
     "firebase-functions": "^7.0.0"
