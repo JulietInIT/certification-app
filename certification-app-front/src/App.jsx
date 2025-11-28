@@ -1,91 +1,95 @@
-import { useEffect, useState } from "react";
-import { readNotes, createNote } from "./firebase";
+import {useState} from 'react';
+import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query';
+import {readNotes, createNote} from './firebase';
+import './App.css';
+
+function getNotesFromRes(res) {
+  if (Array.isArray(res?.data)) return res.data;
+  if (Array.isArray(res?.data?.notes)) return res.data.notes;
+  if (Array.isArray(res)) return res;
+  return [];
+}
 
 export default function App() {
-  const [notes, setNotes] = useState([]);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const queryClient = useQueryClient();
 
-  const fetchNotes = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const {
+    data: notes = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ['notes'],
+    queryFn: async () => {
       const res = await readNotes();
-      console.log("readNotes result:", res);
+      return getNotesFromRes(res);
+    },
+    staleTime: 1000 * 60 * 5,
+    cacheTime: 1000 * 60 * 10,
+  });
 
-      // Normalize possible shapes:
-      // - res.data is an array (older shape)
-      // - res.data.notes is an array (our backend)
-      // - res is an array (unlikely for callable, but handle defensively)
-      let data = [];
-      if (Array.isArray(res?.data)) data = res.data;
-      else if (Array.isArray(res?.data?.notes)) data = res.data.notes;
-      else if (Array.isArray(res)) data = res;
+  const mutation = useMutation({
+    mutationFn: async (note) => {
+      const res = await createNote(note);
+      return res?.data?.note ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({queryKey: ['notes']});
+    },
+  });
 
-      setNotes(data);
-    } catch (err) {
-      console.error("fetchNotes error:", err);
-      setError(err?.message || String(err));
-      setNotes([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchNotes();
-  }, []);
-
-  const handleCreate = async (e) => {
+  const handleCreate = (e) => {
     e.preventDefault();
-    try {
-      const res = await createNote({ title, content });
-      console.log("createNote result:", res);
-
-      // Backend may return { note } or the note directly
-      const newNote = res?.data?.note ?? (res?.data && res.data.id ? res.data : null) ?? (res && res.id ? res : null);
-
-      if (newNote) setNotes((prev) => [...prev, newNote]);
-
-      setTitle("");
-      setContent("");
-    } catch (err) {
-      console.error("handleCreate error:", err);
-      setError(err?.message || String(err));
-    }
+    mutation.mutate({title, content});
+    setTitle('');
+    setContent('');
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>Notes</h1>
-
-      <form onSubmit={handleCreate} style={{ marginBottom: 20 }}>
-        <input
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <input
-          placeholder="Content"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-        />
-        <button type="submit">Create Note</button>
+    <div className="notes-app-container">
+      <h1 className="notes-title">Notes App</h1>
+      <form className="notes-form" onSubmit={handleCreate}>
+        <label>
+          Title:
+          <input
+            className="notes-input"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Title"
+            required
+          />
+        </label>
+        <label>
+          Content:
+          <input
+            className="notes-input"
+            type="text"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Content"
+            required
+          />
+        </label>
+        <button className="notes-add-btn" type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? 'Adding...' : 'Add Note'}
+        </button>
       </form>
-
-      {loading ? (
-        <div>Loading notes…</div>
-      ) : error ? (
-        <div style={{ color: "red" }}>Error: {error}</div>
+      <h2 className="notes-list-title">All Notes</h2>
+      {isLoading ? (
+        <div className="notes-loading">Loading notes...</div>
+      ) : isError ? (
+        <div className="notes-error">Error: {error?.message || String(error)}</div>
       ) : notes.length === 0 ? (
-        <div>No notes yet</div>
+        <div className="notes-empty">No notes yet</div>
       ) : (
-        <ul>
+        <ul className="notes-list">
           {notes.map((note) => (
-            <li key={note.id}>
-              <strong>{note.title}</strong>: {note.content}
+            <li className="notes-list-item" key={note.id}>
+              <span className="notes-list-title-text">{note.title}</span>
+              <span className="notes-list-content-text">{note.content}</span>
             </li>
           ))}
         </ul>
